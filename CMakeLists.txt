@@ -46,3 +46,8 @@ endif()
 add_executable(Cubo src/Cubo.cpp ${GLAD_C_FILE})
 target_include_directories(Cubo PRIVATE ${CMAKE_SOURCE_DIR}/include/glad ${glm_SOURCE_DIR})
 target_link_libraries(Cubo glfw ${OPENGL_LIBS})
+
+add_custom_command(TARGET Cubo POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_SOURCE_DIR}/assets"
+    "$<TARGET_FILE_DIR:Cubo>/assets")
