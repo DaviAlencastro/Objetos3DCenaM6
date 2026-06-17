@@ -1,13 +1,17 @@
-/* Cubo 3D - Atividade Acadêmica Computação Gráfica - Módulo 5
+/* Cubo 3D - Atividade Acadêmica Computação Gráfica - Módulo 6
  * Câmera em primeira pessoa com classe Camera.
  * Inclui: View Matrix (lookAt), Projection Matrix (perspective),
  *         movimento WASD com deltaTime, mouse look (yaw/pitch), zoom com scroll.
+ *         Trajetórias cíclicas por waypoints para cada objeto.
  *
  * Controles:
  *   TAB       - alterna objeto selecionado: 0 -> 1 -> 2 -> TODOS -> 0
  *   R         - modo Rotate  -> X/Y/Z rotacionam o objeto
  *   T         - modo Translate -> setas transladam o objeto
- *   S (modo)  - modo Scale   -> setas/+/- escalam o objeto
+ *   P         - modo Scale   -> setas/+/- escalam o objeto (S reservado para WASD)
+ *   C         - adiciona waypoint na posição atual do objeto selecionado
+ *   G         - inicia/pausa animação de trajetória do objeto selecionado
+ *   U         - limpa waypoints do objeto selecionado
  *   1/2/3     - liga/desliga luz principal / preenchimento / fundo
  *   W/A/S/D   - move câmera (frente/esquerda/trás/direita)
  *   Mouse     - orienta câmera (yaw/pitch)
@@ -21,6 +25,9 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 using namespace std;
 
@@ -152,6 +159,12 @@ struct Cube {
     float scale;
     float rotAngleX, rotAngleY, rotAngleZ;
 
+    // Trajetória: lista de waypoints e estado de animação
+    vector<glm::vec3> waypoints;
+    bool animating = false;
+    int   wpIndex  = 0;     // índice do waypoint de destino atual
+    float wpT      = 0.0f;  // t em [0,1] entre waypoint anterior e atual
+
     Cube(GLuint vao, GLuint texID, int nv, glm::vec3 pos, float s = 0.3f)
         : VAO(vao), textureID(texID), nVertices(nv), position(pos), scale(s),
           rotAngleX(0.0f), rotAngleY(0.0f), rotAngleZ(0.0f) {}
@@ -250,6 +263,7 @@ const float TRANSLATE_STEP = 0.1f;
 const float SCALE_STEP     = 0.05f;
 const float SCALE_MIN      = 0.05f;
 const float ROT_STEP       = glm::radians(5.0f);
+const float ANIM_SPEED     = 0.8f; // unidades de espaço por segundo
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -275,6 +289,9 @@ void updateLightPositions() {
 // ---------------------------------------------------------------------------
 int main()
 {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+#endif
     glfwInit();
 
     GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Cubo 3D - Camera FPS", nullptr, nullptr);
@@ -373,14 +390,36 @@ int main()
         string luzesSt = string(lights[0].enabled ? "1" : "_")
                        + (lights[1].enabled ? "2" : "_")
                        + (lights[2].enabled ? "3" : "_");
+
+        // Conta quantos cubos estão animando para mostrar no título
+        int animCount = 0;
+        for (auto& c : cubes) if (c.animating) animCount++;
+        string animSt = animCount > 0 ? " [ANIM:" + to_string(animCount) + "]" : "";
+
         glfwSetWindowTitle(window,
             ("Cubo 3D | Camera FPS | [" + sel + "] [" + modeName + "]"
-             + " | WASD=cam Mouse=olhar Scroll=zoom | [luzes:" + luzesSt + "]").c_str());
+             + " | C=waypoint G=animar U=limpar | [luzes:" + luzesSt + "]" + animSt).c_str());
 
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Atualiza view matrix e posição da câmera para o Phong
+        // Atualiza trajetórias: interpolação linear cíclica entre waypoints
+        for (auto& c : cubes) {
+            if (!c.animating || c.waypoints.size() < 2) continue;
+            glm::vec3 prev = c.waypoints[(c.wpIndex - 1 + (int)c.waypoints.size()) % (int)c.waypoints.size()];
+            glm::vec3 next = c.waypoints[c.wpIndex];
+            float segLen = glm::length(next - prev);
+            float step   = (segLen > 0.0001f) ? ANIM_SPEED * deltaTime / segLen : 1.0f;
+            c.wpT += step;
+            if (c.wpT >= 1.0f) {
+                c.wpT      = 0.0f;
+                c.position = next;
+                c.wpIndex  = (c.wpIndex + 1) % (int)c.waypoints.size();
+            } else {
+                c.position = glm::mix(prev, next, c.wpT);
+            }
+        }
+
         glm::mat4 view = camera->getViewMatrix();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniform3fv(viewPosLoc, 1, glm::value_ptr(camera->position));
@@ -446,6 +485,47 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         if (key == GLFW_KEY_1) lights[0].enabled = !lights[0].enabled;
         if (key == GLFW_KEY_2) lights[1].enabled = !lights[1].enabled;
         if (key == GLFW_KEY_3) lights[2].enabled = !lights[2].enabled;
+
+        // C: adiciona waypoint na posição atual do(s) objeto(s) selecionado(s)
+        if (key == GLFW_KEY_C) {
+            applyToSelected([](Cube& c) {
+                c.waypoints.push_back(c.position);
+                cout << "Waypoint adicionado: ("
+                     << c.waypoints.back().x << ", "
+                     << c.waypoints.back().y << ", "
+                     << c.waypoints.back().z << ") — total: "
+                     << c.waypoints.size() << endl;
+            });
+        }
+
+        // G: inicia/pausa animação (precisa de ao menos 2 waypoints)
+        if (key == GLFW_KEY_G) {
+            applyToSelected([](Cube& c) {
+                if (c.waypoints.size() < 2) {
+                    cout << "Adicione ao menos 2 waypoints antes de animar (tecla C)." << endl;
+                    return;
+                }
+                c.animating = !c.animating;
+                if (c.animating) {
+                    c.wpIndex = 1;
+                    c.wpT     = 0.0f;
+                    cout << "Animação iniciada (" << c.waypoints.size() << " waypoints)." << endl;
+                } else {
+                    cout << "Animação pausada." << endl;
+                }
+            });
+        }
+
+        // U: limpa waypoints e para animação
+        if (key == GLFW_KEY_U) {
+            applyToSelected([](Cube& c) {
+                c.waypoints.clear();
+                c.animating = false;
+                c.wpIndex   = 0;
+                c.wpT       = 0.0f;
+                cout << "Waypoints removidos." << endl;
+            });
+        }
     }
 
     if (action == GLFW_PRESS || action == GLFW_REPEAT)
