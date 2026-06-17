@@ -1,6 +1,6 @@
-# Objetos 3D - Módulo 5
+# Objetos 3D - Módulo 6
 
-Atividade acadêmica de Computação Gráfica — câmera em primeira pessoa com classe Camera, iluminação Phong com técnica de 3 luzes pontuais e texturas via OBJ/MTL.
+Atividade acadêmica de Computação Gráfica — trajetórias cíclicas por waypoints para cada objeto da cena, com iluminação Phong, texturas via OBJ/MTL e câmera em primeira pessoa.
 
 ## Dependências
 
@@ -15,15 +15,10 @@ Atividade acadêmica de Computação Gráfica — câmera em primeira pessoa com
 cd build
 cmake ..
 cmake --build . --config Debug
+cp -r ..\assets .\Debug\assets
 cd Debug
 .\Cubo.exe
 ```
-
-> **Atenção:** se a textura aparecer errada após trocar o arquivo `assets/texture.png`,
-> copie-a manualmente para a pasta do executável:
-> ```powershell
-> cp ..\assets\texture.png assets\texture.png
-> ```
 
 ## Controles
 
@@ -61,6 +56,15 @@ cd Debug
 | `↑` / `+` | Aumenta escala |
 | `↓` / `-` | Diminui escala |
 
+### Trajetórias
+| Tecla | Ação |
+|---|---|
+| `C` | Adiciona waypoint na posição atual do objeto selecionado |
+| `G` | Inicia / pausa animação (requer ao menos 2 waypoints) |
+| `U` | Remove todos os waypoints do objeto selecionado |
+
+**Como usar:** entre no modo Translação (`T`), mova o objeto com as setas para a posição desejada e pressione `C`. Repita para cada ponto. Pressione `G` para iniciar a animação cíclica.
+
 ### Luzes
 | Tecla | Ação |
 |---|---|
@@ -70,7 +74,7 @@ cd Debug
 
 `ESC` — fecha a janela
 
-O modo ativo, objeto selecionado e estado das luzes são exibidos no título da janela.
+O modo ativo, objeto selecionado, estado das luzes e animação são exibidos no título da janela.
 
 ## Tecnologias
 
