@@ -158,15 +158,17 @@ struct Cube {
     glm::vec3 position;
     float scale;
     float rotAngleX, rotAngleY, rotAngleZ;
+    Material mat;
 
     // Trajetória: lista de waypoints e estado de animação
     vector<glm::vec3> waypoints;
-    bool animating = false;
-    int   wpIndex  = 0;     // índice do waypoint de destino atual
-    float wpT      = 0.0f;  // t em [0,1] entre waypoint anterior e atual
+    bool animating  = false;
+    int   wpIndex   = 0;     // índice do waypoint de destino (fallback linear)
+    float wpT       = 0.0f;  // t em [0,1] entre waypoints (fallback linear)
+    float tGlobal   = 0.0f;  // t global para Bézier (percorre [0, n) ciclicamente)
 
-    Cube(GLuint vao, GLuint texID, int nv, glm::vec3 pos, float s = 0.3f)
-        : VAO(vao), textureID(texID), nVertices(nv), position(pos), scale(s),
+    Cube(GLuint vao, GLuint texID, int nv, glm::vec3 pos, float s, Material m)
+        : VAO(vao), textureID(texID), nVertices(nv), position(pos), scale(s), mat(m),
           rotAngleX(0.0f), rotAngleY(0.0f), rotAngleZ(0.0f) {}
 };
 
@@ -276,6 +278,32 @@ void applyToSelected(Fn fn) {
         for (auto& c : cubes) fn(c);
 }
 
+// Avalia uma curva de Bézier cúbica pelo algoritmo de De Casteljau
+// P0..P3 são os 4 pontos de controle, t em [0,1]
+glm::vec3 bezierCubic(glm::vec3 p0, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, float t) {
+    glm::vec3 q0 = glm::mix(p0, p1, t);
+    glm::vec3 q1 = glm::mix(p1, p2, t);
+    glm::vec3 q2 = glm::mix(p2, p3, t);
+    glm::vec3 r0 = glm::mix(q0, q1, t);
+    glm::vec3 r1 = glm::mix(q1, q2, t);
+    return glm::mix(r0, r1, t);
+}
+
+// Avalia a posição na trajetória Bézier cíclica dado t global em [0, nSegments)
+// Os pontos são agrupados em segmentos cúbicos de 4 em 4 (com sobreposição)
+glm::vec3 evalBezierPath(const vector<glm::vec3>& pts, float tGlobal) {
+    int n = (int)pts.size();
+    // Número de segmentos cúbicos: cada segmento usa pts[i], pts[i+1], pts[i+2], pts[i+3]
+    int nSeg = n; // cíclico: segmento i usa pontos i, i+1, i+2, i+3 (mod n)
+    int seg = (int)tGlobal % nSeg;
+    float t = tGlobal - (int)tGlobal;
+    glm::vec3 p0 = pts[ seg        % n];
+    glm::vec3 p1 = pts[(seg + 1)   % n];
+    glm::vec3 p2 = pts[(seg + 2)   % n];
+    glm::vec3 p3 = pts[(seg + 3)   % n];
+    return bezierCubic(p0, p1, p2, p3, t);
+}
+
 void updateLightPositions() {
     float s = cubes[0].scale;
     glm::vec3 p = cubes[0].position;
@@ -343,28 +371,45 @@ int main()
     glm::mat4 projection = camera->getProjectionMatrix((float)WIDTH / HEIGHT);
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-    int nv;
-    GLuint tex0, tex1, tex2;
-    Material mat0, mat1, mat2;
-    GLuint vao0 = loadSimpleOBJ("assets/modelo.obj", nv, tex0, mat0);
-    cubes.push_back(Cube(vao0, tex0, nv, glm::vec3(-0.65f, 0.0f, 0.0f), 0.2f));
+    // Carrega cena a partir do arquivo de configuração (assets/scene.txt)
+    {
+        ifstream sceneFile("assets/scene.txt");
+        if (!sceneFile.is_open())
+            cerr << "scene.txt não encontrado em assets/ — usando cena padrão." << endl;
+        string line;
+        while (getline(sceneFile, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            istringstream ss(line);
+            string token; ss >> token;
+            if (token == "obj") {
+                string objPath; float x, y, z, s;
+                ss >> objPath >> x >> y >> z >> s;
+                GLuint texID; Material mat; int nv;
+                GLuint vao = loadSimpleOBJ(objPath, nv, texID, mat);
+                if (vao != (GLuint)-1)
+                    cubes.push_back(Cube(vao, texID, nv, glm::vec3(x, y, z), s, mat));
+                else
+                    cerr << "Falha ao carregar: " << objPath << endl;
+            }
+        }
+    }
 
-    GLuint vao1 = loadSimpleOBJ("assets/modelo.obj", nv, tex1, mat1);
-    cubes.push_back(Cube(vao1, tex1, nv, glm::vec3( 0.00f, 0.0f, 0.0f), 0.2f));
+    // Fallback: se scene.txt não carregou nenhum objeto, usa posições fixas
+    if (cubes.empty()) {
+        int nv; GLuint tex; Material mat;
+        GLuint vao0 = loadSimpleOBJ("assets/modelo.obj", nv, tex, mat);
+        cubes.push_back(Cube(vao0, tex, nv, glm::vec3(-0.65f, 0.0f, 0.0f), 0.2f, mat));
+        GLuint vao1 = loadSimpleOBJ("assets/modelo.obj", nv, tex, mat);
+        cubes.push_back(Cube(vao1, tex, nv, glm::vec3( 0.00f, 0.0f, 0.0f), 0.2f, mat));
+        GLuint vao2 = loadSimpleOBJ("assets/modelo.obj", nv, tex, mat);
+        cubes.push_back(Cube(vao2, tex, nv, glm::vec3( 0.65f, 0.0f, 0.0f), 0.2f, mat));
+    }
 
-    GLuint vao2 = loadSimpleOBJ("assets/modelo.obj", nv, tex2, mat2);
-    cubes.push_back(Cube(vao2, tex2, nv, glm::vec3( 0.65f, 0.0f, 0.0f), 0.2f));
-
-    if (vao0 == (GLuint)-1 || vao1 == (GLuint)-1 || vao2 == (GLuint)-1) {
+    if (cubes.empty()) {
         cerr << "Falha ao carregar modelos OBJ." << endl;
         glfwTerminate();
         return -1;
     }
-
-    glUniform3fv(kaLoc, 1, glm::value_ptr(mat0.ka));
-    glUniform3fv(kdLoc, 1, glm::value_ptr(mat0.kd));
-    glUniform3fv(ksLoc, 1, glm::value_ptr(mat0.ks));
-    glUniform1f(nsLoc, mat0.ns);
 
     lights[0].color = glm::vec3(1.0f, 1.0f, 0.95f); lights[0].intensity = 1.0f;
     lights[1].color = glm::vec3(0.8f, 0.9f, 1.0f);  lights[1].intensity = 0.5f;
@@ -403,20 +448,29 @@ int main()
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Atualiza trajetórias: interpolação linear cíclica entre waypoints
+        // Atualiza trajetórias: Bézier cíclica (≥4 pontos) ou linear (2-3 pontos)
         for (auto& c : cubes) {
             if (!c.animating || c.waypoints.size() < 2) continue;
-            glm::vec3 prev = c.waypoints[(c.wpIndex - 1 + (int)c.waypoints.size()) % (int)c.waypoints.size()];
-            glm::vec3 next = c.waypoints[c.wpIndex];
-            float segLen = glm::length(next - prev);
-            float step   = (segLen > 0.0001f) ? ANIM_SPEED * deltaTime / segLen : 1.0f;
-            c.wpT += step;
-            if (c.wpT >= 1.0f) {
-                c.wpT      = 0.0f;
-                c.position = next;
-                c.wpIndex  = (c.wpIndex + 1) % (int)c.waypoints.size();
+            int n = (int)c.waypoints.size();
+            if (n >= 4) {
+                // Bézier cúbica por De Casteljau — avança tGlobal em função da velocidade
+                c.tGlobal += ANIM_SPEED * deltaTime;
+                if (c.tGlobal >= (float)n) c.tGlobal -= (float)n;
+                c.position = evalBezierPath(c.waypoints, c.tGlobal);
             } else {
-                c.position = glm::mix(prev, next, c.wpT);
+                // Fallback linear para menos de 4 pontos
+                glm::vec3 prev = c.waypoints[(c.wpIndex - 1 + n) % n];
+                glm::vec3 next = c.waypoints[c.wpIndex];
+                float segLen = glm::length(next - prev);
+                float step   = (segLen > 0.0001f) ? ANIM_SPEED * deltaTime / segLen : 1.0f;
+                c.wpT += step;
+                if (c.wpT >= 1.0f) {
+                    c.wpT      = 0.0f;
+                    c.position = next;
+                    c.wpIndex  = (c.wpIndex + 1) % n;
+                } else {
+                    c.position = glm::mix(prev, next, c.wpT);
+                }
             }
         }
 
@@ -434,6 +488,12 @@ int main()
 
         for (int i = 0; i < (int)cubes.size(); i++)
         {
+            // Passa material específico de cada objeto ao shader
+            glUniform3fv(kaLoc, 1, glm::value_ptr(cubes[i].mat.ka));
+            glUniform3fv(kdLoc, 1, glm::value_ptr(cubes[i].mat.kd));
+            glUniform3fv(ksLoc, 1, glm::value_ptr(cubes[i].mat.ks));
+            glUniform1f (nsLoc,    cubes[i].mat.ns);
+
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, cubes[i].position);
             model = glm::rotate(model, cubes[i].rotAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -507,8 +567,9 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                 }
                 c.animating = !c.animating;
                 if (c.animating) {
-                    c.wpIndex = 1;
-                    c.wpT     = 0.0f;
+                    c.wpIndex  = 1;
+                    c.wpT      = 0.0f;
+                    c.tGlobal  = 0.0f;
                     cout << "Animação iniciada (" << c.waypoints.size() << " waypoints)." << endl;
                 } else {
                     cout << "Animação pausada." << endl;
@@ -523,6 +584,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                 c.animating = false;
                 c.wpIndex   = 0;
                 c.wpT       = 0.0f;
+                c.tGlobal   = 0.0f;
                 cout << "Waypoints removidos." << endl;
             });
         }

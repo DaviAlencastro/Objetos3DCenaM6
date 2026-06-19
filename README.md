@@ -1,23 +1,28 @@
-# Objetos 3D - Módulo 6
+# Objetos 3D - Módulo 6 — Trajetórias com Curvas de Bézier
 
-Atividade acadêmica de Computação Gráfica — trajetórias cíclicas por waypoints para cada objeto da cena, com iluminação Phong, texturas via OBJ/MTL e câmera em primeira pessoa.
+Atividade acadêmica de Computação Gráfica — visualizador 3D com iluminação Phong, texturas via OBJ/MTL, câmera em primeira pessoa e trajetórias cíclicas por curvas de Bézier cúbicas (De Casteljau).
 
-## Dependências
+## Setup — Compilação e execução
 
-- CMake 3.10+
-- Compilador C++17 (MSVC recomendado)
-- Git (para o FetchContent baixar GLFW e GLM automaticamente)
-- `stb_image.h` — baixado automaticamente pelo CMake
-
-## Como compilar e executar
+Requisitos: **CMake 3.10+**, compilador **C++17** (MSVC recomendado), **Git**.
 
 ```powershell
+# Na pasta raiz do projeto (Objetos3DCenaM2/)
+mkdir build
 cd build
 cmake ..
 cmake --build . --config Debug
 cp -r ..\assets .\Debug\assets
 cd Debug
 .\Cubo.exe
+```
+
+> GLFW, GLM e stb_image são obtidos automaticamente pelo CMake na primeira compilação.
+
+A cena é configurada pelo arquivo `assets/scene.txt`:
+```
+# formato: obj <arquivo_obj> <x> <y> <z> <escala>
+obj assets/modelo.obj -0.65 0.0 0.0 0.2
 ```
 
 ## Controles
@@ -27,7 +32,7 @@ cd Debug
 |---|---|
 | `W` / `S` / `A` / `D` | Move câmera frente / trás / esquerda / direita |
 | Mouse | Orienta câmera (yaw/pitch) |
-| Scroll | Zoom (altera FOV entre 1° e 45°) |
+| Scroll | Zoom (FOV entre 1° e 45°) |
 
 ### Seleção e modos de transformação
 | Tecla | Ação |
@@ -37,49 +42,44 @@ cd Debug
 | `T` | Ativa modo **Translação** |
 | `P` | Ativa modo **Escala** (`S` reservado para câmera) |
 
-### Modo Rotação (`R`)
-| Tecla | Ação |
-|---|---|
-| `←` / `→` | Rotaciona no eixo Y |
-| `↑` / `↓` | Rotaciona no eixo X |
-| `X` / `Y` / `Z` | Rotaciona no eixo correspondente |
+### Transformações (conforme modo ativo)
+| Tecla | Rotate | Translate | Scale |
+|---|---|---|---|
+| `←` / `→` | Eixo Y | Eixo X | — |
+| `↑` / `↓` | Eixo X | Eixo Y | Aumenta / Diminui |
+| `X` / `Y` / `Z` | Eixo correspondente | — | — |
+| `+` / `-` | — | — | Aumenta / Diminui |
 
-### Modo Translação (`T`)
-| Tecla | Ação |
-|---|---|
-| `←` / `→` | Move em X |
-| `↑` / `↓` | Move em Y |
-
-### Modo Escala (`P`)
-| Tecla | Ação |
-|---|---|
-| `↑` / `+` | Aumenta escala |
-| `↓` / `-` | Diminui escala |
-
-### Trajetórias
+### Trajetórias (Bézier cúbica)
 | Tecla | Ação |
 |---|---|
 | `C` | Adiciona waypoint na posição atual do objeto selecionado |
-| `G` | Inicia / pausa animação (requer ao menos 2 waypoints) |
+| `G` | Inicia / pausa animação (mínimo 2 pontos; ≥4 usa Bézier cúbica) |
 | `U` | Remove todos os waypoints do objeto selecionado |
 
-**Como usar:** entre no modo Translação (`T`), mova o objeto com as setas para a posição desejada e pressione `C`. Repita para cada ponto. Pressione `G` para iniciar a animação cíclica.
+**Como usar:** modo `T` → mova com setas → `C` (repita para cada ponto) → `G` para animar.
 
 ### Luzes
 | Tecla | Ação |
 |---|---|
-| `1` | Liga/desliga luz principal (key) |
-| `2` | Liga/desliga luz de preenchimento (fill) |
-| `3` | Liga/desliga luz de fundo (back) |
+| `1` | Liga/desliga luz principal (key light) |
+| `2` | Liga/desliga luz de preenchimento (fill light) |
+| `3` | Liga/desliga luz de fundo (back light) |
 
 `ESC` — fecha a janela
 
-O modo ativo, objeto selecionado, estado das luzes e animação são exibidos no título da janela.
+## Assets
 
-## Tecnologias
+| Asset | Procedência |
+|---|---|
+| `modelo.obj` | [Repositório de exemplos da disciplina](https://github.com/fellowsheep/FCG2025-1) |
+| `texture.png` | [Repositório de exemplos da disciplina](https://github.com/fellowsheep/FCG2025-1) |
 
-- OpenGL 4.5 + GLSL 450
-- GLFW 3.4 — janela e entrada
-- GLM — matemática 3D
-- GLAD — loader de funções OpenGL
-- stb_image — carregamento de texturas
+## Referências
+
+- **OpenGL:** [learnopengl.com](https://learnopengl.com) — iluminação Phong, mapeamento de textura, câmera FPS
+- **GLFW:** [glfw.org/docs](https://www.glfw.org/docs/latest/)
+- **GLM:** [glm.g-truc.net](https://glm.g-truc.net/)
+- **stb_image:** [github.com/nothings/stb](https://github.com/nothings/stb)
+- **Curvas de Bézier (De Casteljau):** slides da disciplina — Módulo 6, Rossana B. Queiroz
+- **Formato OBJ/MTL:** [paulbourke.net/dataformats/obj](http://paulbourke.net/dataformats/obj/)

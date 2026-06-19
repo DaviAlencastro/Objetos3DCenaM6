@@ -1,0 +1,5 @@
+# scene.txt — configuração da cena (Davi Alencastro)
+# formato: obj <arquivo_obj> <x> <y> <z> <escala>
+obj assets/modelo.obj -0.65 0.0 0.0 0.2
+obj assets/modelo.obj  0.00 0.0 0.0 0.2
+obj assets/modelo.obj  0.65 0.0 0.0 0.2
